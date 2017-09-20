@@ -22,64 +22,71 @@ public class RessourceManager : MonoBehaviour {
         public bool DataReady;
     }
 
-    public Objects listObjects;
+    public Objects[] listObjects;
     private WWW www;
+    private Texture2D[] listTex;
     private Thread listThread;
-    private Texture2D texture;
+    private Texture2D tmpTex;
 
     // Use this for initialization
     IEnumerator Start () {
 
-        texture = new Texture2D(8, 8);
+        tmpTex = new Texture2D(8, 8);
 
-        //www = new WWW[listObjects.Length];
+        listTex = new Texture2D[listObjects.Length];
 
-
-        //for (int i=0; i< listObjects.Length; i++)
-        //{
-            listObjects.DataReady = false;
-            listObjects.pathSave = Application.persistentDataPath + /*i +*/ "Texture.jpg"; //Still have to find a better way because if you change the order in the inspector or just change the place of one element he will take the texture of the old one
-            if (File.Exists(listObjects.pathSave))
+        for (int i=0; i< listObjects.Length; i++)
+        {
+            listObjects[i].DataReady = false;
+            listObjects[i].pathSave = Application.persistentDataPath + i + ".jpg"; //Still have to find a better way because if you change the order in the inspector or just change the place of one element he will take the texture of the old one
+            if (File.Exists(listObjects[i].pathSave))
             {
                 info.text = "Dont Need to Download";
-                listThread = new Thread(() => LoadTexture()); //Pour les paramétres plus tard
+                int tmpI = i; //Because before I create this Tmp value the i++ was acting before the value was send to the thread so it was everytime i+1 that the thread receive
+                listThread = new Thread(() => LoadTexture(tmpI)); 
                 listThread.Start();
             }
             else
             {
                 info.text = "Downloading";
-                www = new WWW(listObjects.URL);
+                www = new WWW(listObjects[i].URL);
                 yield return www;
-                texture = www.texture;
+                listTex[i] = www.texture;
 
-                listThread = new Thread(() => SaveTexture()); //Pour les paramétres plus tard
+                int tmpI = i;
+                listThread = new Thread(() => SaveTexture(tmpI)); 
                 listThread.Start();
             }
 
-        //}	
+        }	
     }
 	
 	// Update is called once per frame
 	void Update () {
-        if (listObjects.DataReady)
+        if (listObjects[0].DataReady)
         {
-            texture.LoadImage(listObjects.saveData);
-            listObjects.tex.material.mainTexture = texture;
+            tmpTex.LoadImage(listObjects[0].saveData);
+            listObjects[0].tex.material.mainTexture = tmpTex;
+            listObjects[0].DataReady = false;
+        }
+        if (listObjects[1].DataReady)
+        {
+            tmpTex.LoadImage(listObjects[1].saveData);
+            listObjects[1].tex.material.mainTexture = tmpTex;
+            listObjects[1].DataReady = false;
         }
     }
 
-    private void SaveTexture()
+    private void SaveTexture(int _i)
     {
-        info.text = "Texture sauvegardé";
-        byte[] bytes = texture.EncodeToJPG();
-        File.WriteAllBytes(listObjects.pathSave, bytes);
-        LoadTexture();
+        byte[] bytes = listTex[_i].EncodeToJPG();
+        File.WriteAllBytes(listObjects[_i].pathSave, bytes);
+        LoadTexture(_i);
     }
 
-    private void LoadTexture()
+    private void LoadTexture(int _i)
     {
-        //info.text = "Loading Texture";
-        listObjects.saveData = File.ReadAllBytes(listObjects.pathSave);
-        listObjects.DataReady = true;
+        listObjects[_i].saveData = File.ReadAllBytes(listObjects[_i].pathSave);
+        listObjects[_i].DataReady = true;
     }
 }
