@@ -26,11 +26,13 @@ public class RessourceManager : MonoBehaviour {
     }
 
     public Objects[] listObjects;
+    public int nbThread;
+
     private WWW www;
-    private Thread listThread;
+    private Thread[] listThread;
     private Texture2D tmpTex;
-    bool ThreadFree = true;
     private List<int> indexObjectsWaiting;
+    private List<int> indexFreeThread;
 
     // Use this for initialization
     IEnumerator Start () {
@@ -38,6 +40,13 @@ public class RessourceManager : MonoBehaviour {
         tmpTex = new Texture2D(8, 8);
 
         indexObjectsWaiting = new List<int>();
+
+        indexFreeThread = new List<int>();
+        listThread = new Thread[nbThread];
+        for(int i=0; i < listThread.Length; i++)
+        {
+            indexFreeThread.Add(i);
+        }
 
         for (int i=0; i< listObjects.Length; i++)
         {
@@ -48,13 +57,13 @@ public class RessourceManager : MonoBehaviour {
                 //info.text = "Dont Need to Download";
                 listObjects[i].needSave = false;
 
-                if (ThreadFree)
+                if (indexFreeThread.Count > 0)
                 {
-                    //Debug.LogError("Start Thread Load pour " + i);
                     int tmpI = i; //Because before I create this Tmp value the i++ was acting before the value was send to the thread so it was everytime i+1 that the thread receive
-                    listThread = new Thread(() => LoadTexture(tmpI));
-                    listThread.Start();
-                    ThreadFree = false;
+                    Debug.LogError("Start Thread Load " + indexFreeThread[0] + " Load pour " + tmpI);
+                    listThread[indexFreeThread[0]] = new Thread(() => LoadTexture(tmpI, indexFreeThread[0]));
+                    listThread[indexFreeThread[0]].Start();
+                    indexFreeThread.RemoveAt(0);
                 }
                 else
                 {
@@ -73,12 +82,13 @@ public class RessourceManager : MonoBehaviour {
 
                 listObjects[i].needSave = true;
 
-                if (ThreadFree)
+                if (indexFreeThread.Count > 0)
                 {
                     int tmpI = i;
-                    listThread = new Thread(() => SaveTexture(tmpI));
-                    listThread.Start();
-                    ThreadFree = false;
+                    Debug.LogError("Start Thread Save " + indexFreeThread[0] + " Load pour " + tmpI);
+                    listThread[indexFreeThread[0]] = new Thread(() => SaveTexture(tmpI, indexFreeThread[0]));
+                    listThread[indexFreeThread[0]].Start();
+                    indexFreeThread.RemoveAt(0);
                 }
                 else
                 {
@@ -92,13 +102,14 @@ public class RessourceManager : MonoBehaviour {
 	
 	// Update is called once per frame
 	void Update () {
-        
+
+        Debug.LogError("Il y a " +indexFreeThread.Count+" thread free");
+
         for(int i=0; i< listObjects.Length; i++)
         {
             if (listObjects[i].DataReady)
             {
                 tmpTex.LoadImage(listObjects[i].saveData);
-                Debug.LogError(listObjects[i].tex.name);
                 listObjects[i].tex.material.mainTexture = tmpTex;
                 listObjects[i].DataReady = false;
                 tmpTex = new Texture2D(8, 8);
@@ -107,19 +118,19 @@ public class RessourceManager : MonoBehaviour {
         }
     }
 
-    private void SaveTexture(int _i)
+    private void SaveTexture(int _i,int indexThread)
     {
         //Debug.LogError("Save Texture " + _i);
         listObjects[_i].needSave = false;
 
         //byte[] bytes = listTex[_i].EncodeToJPG();
         File.WriteAllBytes(listObjects[_i].pathSave, listObjects[_i].saveData);
-        LoadTexture(_i);
+        LoadTexture(_i, indexThread);
     }
 
-    private void LoadTexture(int _i)
+    private void LoadTexture(int _i,int indexThread)
     {
-        //Debug.LogError("Load "+_i);
+        Debug.LogError("Load "+_i);
         listObjects[_i].saveData = File.ReadAllBytes(listObjects[_i].pathSave);
         listObjects[_i].DataReady = true;
 
@@ -128,18 +139,21 @@ public class RessourceManager : MonoBehaviour {
             //Debug.LogError("encore un");
             int tmpI = indexObjectsWaiting[0];
             indexObjectsWaiting.RemoveAt(0);
+            Debug.LogError("Keep Thread " + indexThread + " Load pour " + tmpI);
+
             if (listObjects[tmpI].needSave)
             {
-                SaveTexture(tmpI);
+                SaveTexture(tmpI, indexThread);
             }
             else
             {
-                LoadTexture(tmpI);
+                LoadTexture(tmpI, indexThread);
             }
         }
         else
         {
-            ThreadFree = true;
+            indexFreeThread.Insert(indexThread,0);
+            //ou indexFreeThread.Add(indexThread);
         }
     }
 }
