@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
+using System;
 using UnityEngine.UI;
 using System.Threading;
 
@@ -15,6 +16,8 @@ public class RessourceManager : MonoBehaviour {
         public MeshRenderer tex;
         public string URL;
         [HideInInspector]
+        public bool needSave;
+        [HideInInspector]
         public string pathSave;
         [HideInInspector]
         public byte[] saveData;
@@ -24,16 +27,17 @@ public class RessourceManager : MonoBehaviour {
 
     public Objects[] listObjects;
     private WWW www;
-    private Texture2D[] listTex;
     private Thread listThread;
     private Texture2D tmpTex;
+    bool ThreadFree = true;
+    private List<int> indexObjectsWaiting;
 
     // Use this for initialization
     IEnumerator Start () {
 
         tmpTex = new Texture2D(8, 8);
 
-        listTex = new Texture2D[listObjects.Length];
+        indexObjectsWaiting = new List<int>();
 
         for (int i=0; i< listObjects.Length; i++)
         {
@@ -41,21 +45,46 @@ public class RessourceManager : MonoBehaviour {
             listObjects[i].pathSave = Application.persistentDataPath + i + ".jpg"; //Still have to find a better way because if you change the order in the inspector or just change the place of one element he will take the texture of the old one
             if (File.Exists(listObjects[i].pathSave))
             {
-                info.text = "Dont Need to Download";
-                int tmpI = i; //Because before I create this Tmp value the i++ was acting before the value was send to the thread so it was everytime i+1 that the thread receive
-                listThread = new Thread(() => LoadTexture(tmpI)); 
-                listThread.Start();
+                //info.text = "Dont Need to Download";
+                listObjects[i].needSave = false;
+
+                if (ThreadFree)
+                {
+                    //Debug.LogError("Start Thread Load pour " + i);
+                    int tmpI = i; //Because before I create this Tmp value the i++ was acting before the value was send to the thread so it was everytime i+1 that the thread receive
+                    listThread = new Thread(() => LoadTexture(tmpI));
+                    listThread.Start();
+                    ThreadFree = false;
+                }
+                else
+                {
+                    indexObjectsWaiting.Add(i);
+                    //Debug.LogError("Texture " + i + " is waiting for Thread (Size = " + indexObjectsWaiting.Count + ")");
+                }
             }
             else
             {
-                info.text = "Downloading";
+                //info.text = "Downloading";
+                //Debug.LogError("Start Thread Save pour " + i);
                 www = new WWW(listObjects[i].URL);
                 yield return www;
-                listTex[i] = www.texture;
 
-                int tmpI = i;
-                listThread = new Thread(() => SaveTexture(tmpI)); 
-                listThread.Start();
+                listObjects[i].saveData = www.texture.EncodeToJPG();
+
+                listObjects[i].needSave = true;
+
+                if (ThreadFree)
+                {
+                    int tmpI = i;
+                    listThread = new Thread(() => SaveTexture(tmpI));
+                    listThread.Start();
+                    ThreadFree = false;
+                }
+                else
+                {
+                    indexObjectsWaiting.Add(i);
+                    //Debug.LogError("Texture " + i + " is waiting for Thread (Size = " + indexObjectsWaiting.Count + ")");
+                }
             }
 
         }	
@@ -63,30 +92,54 @@ public class RessourceManager : MonoBehaviour {
 	
 	// Update is called once per frame
 	void Update () {
-        if (listObjects[0].DataReady)
+        
+        for(int i=0; i< listObjects.Length; i++)
         {
-            tmpTex.LoadImage(listObjects[0].saveData);
-            listObjects[0].tex.material.mainTexture = tmpTex;
-            listObjects[0].DataReady = false;
-        }
-        if (listObjects[1].DataReady)
-        {
-            tmpTex.LoadImage(listObjects[1].saveData);
-            listObjects[1].tex.material.mainTexture = tmpTex;
-            listObjects[1].DataReady = false;
+            if (listObjects[i].DataReady)
+            {
+                tmpTex.LoadImage(listObjects[i].saveData);
+                Debug.LogError(listObjects[i].tex.name);
+                listObjects[i].tex.material.mainTexture = tmpTex;
+                listObjects[i].DataReady = false;
+                tmpTex = new Texture2D(8, 8);
+                //info.text = "Object"+i;
+            }
         }
     }
 
     private void SaveTexture(int _i)
     {
-        byte[] bytes = listTex[_i].EncodeToJPG();
-        File.WriteAllBytes(listObjects[_i].pathSave, bytes);
+        //Debug.LogError("Save Texture " + _i);
+        listObjects[_i].needSave = false;
+
+        //byte[] bytes = listTex[_i].EncodeToJPG();
+        File.WriteAllBytes(listObjects[_i].pathSave, listObjects[_i].saveData);
         LoadTexture(_i);
     }
 
     private void LoadTexture(int _i)
     {
+        //Debug.LogError("Load "+_i);
         listObjects[_i].saveData = File.ReadAllBytes(listObjects[_i].pathSave);
         listObjects[_i].DataReady = true;
+
+        if (indexObjectsWaiting.Count > 0)
+        {
+            //Debug.LogError("encore un");
+            int tmpI = indexObjectsWaiting[0];
+            indexObjectsWaiting.RemoveAt(0);
+            if (listObjects[tmpI].needSave)
+            {
+                SaveTexture(tmpI);
+            }
+            else
+            {
+                LoadTexture(tmpI);
+            }
+        }
+        else
+        {
+            ThreadFree = true;
+        }
     }
 }
