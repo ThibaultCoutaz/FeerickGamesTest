@@ -9,7 +9,7 @@ using System.Threading;
 public class RessourceManager : MonoBehaviour {
 
     public bool startThreadWhenDownload;
-    public Text info;
+    public Text infos;
 
     [System.Serializable]
     public struct Objects
@@ -24,6 +24,7 @@ public class RessourceManager : MonoBehaviour {
         public byte[] saveData;
         [HideInInspector]
         public bool DataReady;
+
     }
 
     public Objects[] listObjects;
@@ -33,16 +34,21 @@ public class RessourceManager : MonoBehaviour {
     private Thread[] listThread;
     private Texture2D tmpTex;
     private List<int> indexObjectsWaiting;
+    private List<int> indexObjectsWaitingSave;
+    private List<int> indexObjectsWaitingLoad;
     private List<int> indexFreeThread;
     private int texDraw = 0;
     private bool allDraw = false;
 
+    private List<int> iFor;
+
+    private int tmpI, tmpIndex;
     // Use this for initialization
     IEnumerator Start () {
+        
+        iFor = new List<int>();
 
         tmpTex = new Texture2D(8, 8);
-
-        indexObjectsWaiting = new List<int>();
 
         indexFreeThread = new List<int>();
         listThread = new Thread[nbThread];
@@ -53,22 +59,25 @@ public class RessourceManager : MonoBehaviour {
 
         if (startThreadWhenDownload)
         {
+            indexObjectsWaiting = new List<int>();
+
             for (int i = 0; i < listObjects.Length; i++)
             {
                 listObjects[i].DataReady = false;
-                listObjects[i].pathSave = Application.persistentDataPath + listObjects[i].tex.gameObject.name + ".jpg"; 
+                listObjects[i].pathSave = Application.persistentDataPath + listObjects[i].tex.gameObject.name + ".jpg";
                 if (File.Exists(listObjects[i].pathSave))
                 {
-                    info.text = "Load";
+                    infos.text = "Loading";
                     listObjects[i].needSave = false;
 
                     if (indexFreeThread.Count > 0)
                     {
-                        int tmpI = i; //Because before I create this Tmp value the i++ was acting before the value was send to the thread so it was everytime i+1 that the thread receive
-                        Debug.LogError("Start Thread Load " + indexFreeThread[0] + " Load pour " + tmpI);
-                        listThread[indexFreeThread[0]] = new Thread(() => LoadTexture(tmpI, indexFreeThread[0]));
-                        listThread[indexFreeThread[0]].Start();
+                        iFor.Add(i); //To be sure that multiple thread are not using the same value of i
+                        tmpIndex = indexFreeThread[0];
                         indexFreeThread.RemoveAt(0);
+
+                        listThread[tmpIndex] = new Thread(() => LoadTexture(tmpIndex));
+                        listThread[tmpIndex].Start();
                     }
                     else
                     {
@@ -77,7 +86,7 @@ public class RessourceManager : MonoBehaviour {
                 }
                 else
                 {
-                    info.text = "Downloading";
+                    infos.text = "Downloading";
                     www = new WWW(listObjects[i].URL);
                     yield return www;
 
@@ -87,11 +96,12 @@ public class RessourceManager : MonoBehaviour {
 
                     if (indexFreeThread.Count > 0)
                     {
-                        int tmpI = i;
-                        Debug.LogError("Start Thread Save " + indexFreeThread[0] + " Load pour " + tmpI);
-                        listThread[indexFreeThread[0]] = new Thread(() => SaveTexture(tmpI, indexFreeThread[0]));
-                        listThread[indexFreeThread[0]].Start();
+                        iFor.Add(i);
+                        tmpIndex = indexFreeThread[0];
                         indexFreeThread.RemoveAt(0);
+                        Debug.LogError("Start Thread Save " + tmpIndex + " Load pour " + iFor[0]);
+                        listThread[tmpIndex] = new Thread(() => SaveTexture(tmpIndex));
+                        listThread[tmpIndex].Start();
                     }
                     else
                     {
@@ -100,65 +110,78 @@ public class RessourceManager : MonoBehaviour {
                 }
             }
 
-            info.text = "DONE !";
+            infos.text = "DONE !";
         }
         else
         {
+            indexObjectsWaitingSave = new List<int>();
+            indexObjectsWaitingLoad = new List<int>();
+
             for (int i = 0; i < listObjects.Length; i++)
             {
                 listObjects[i].pathSave = Application.persistentDataPath + listObjects[i].tex.gameObject.name + ".jpg";
                 if (!File.Exists(listObjects[i].pathSave))
                 {
-                    info.text = "Downloading";
+                    infos.text = "Downloading";
                     www = new WWW(listObjects[i].URL);
                     yield return www;
 
                     listObjects[i].saveData = www.texture.EncodeToJPG();
-
+                    
                     if (indexFreeThread.Count > 0)
                     {
-                        int tmpI = i;
-                        Debug.LogError("Start Thread Save " + indexFreeThread[0] + " Load pour " + tmpI);
-                        listThread[indexFreeThread[0]] = new Thread(() => SaveTextureWithoutLoad(tmpI, indexFreeThread[0]));
-                        listThread[indexFreeThread[0]].Start();
+                        iFor.Add(i);
+                        tmpIndex = indexFreeThread[0];
                         indexFreeThread.RemoveAt(0);
+                        listThread[tmpIndex] = new Thread(() => SaveTextureWithoutLoad(tmpIndex));
+                        listThread[tmpIndex].Start();
                     }
                     else
                     {
-                        indexObjectsWaiting.Add(i);
+                        indexObjectsWaitingSave.Add(i);
                     }
+                    
                 }
             }
 
-            info.text = "Loading !";
+            infos.text = "Loading !";
+            
+            //To be sure We wait to have at least one thread free to start the loading other way it can happen that none of the thread will get free during all the loading and so no loading will appear
+            while (indexFreeThread.Count == 0) { }
+
+            iFor.Clear();
 
             for (int i = 0; i < listObjects.Length; i++)
             {
                 listObjects[i].DataReady = false;
-                listObjects[i].pathSave = Application.persistentDataPath + listObjects[i].tex.gameObject.name + ".jpg"; 
+                listObjects[i].pathSave = Application.persistentDataPath + listObjects[i].tex.gameObject.name + ".jpg";
                 listObjects[i].needSave = false;
-                
+
                 if (indexFreeThread.Count > 0)
                 {
-                    int tmpI = i; //Because before I create this Tmp value the i++ was acting before the value was send to the thread so it was everytime i+1 that the thread receive
-                    Debug.LogError("Start Thread Load " + indexFreeThread[0] + " Load pour " + tmpI);
-                    listThread[indexFreeThread[0]] = new Thread(() => LoadTextureWithoutSave(tmpI, indexFreeThread[0]));
-                    listThread[indexFreeThread[0]].Start();
+                    iFor.Add(i);
+                    tmpIndex = indexFreeThread[0];
                     indexFreeThread.RemoveAt(0);
+
+                    listThread[tmpIndex] = new Thread(() => LoadTextureWithoutSave(tmpIndex));
+                    listThread[tmpIndex].Start();
                 }
                 else
                 {
-                    indexObjectsWaiting.Add(i);
+                    indexObjectsWaitingLoad.Add(i);
                 }
             }
+
+            infos.text = "DONE !";
         }
     }
-
-	// Update is called once per frame
-	void Update () {
+    
+    // Update is called once per frame
+    void Update()
+    {
 
         if(!allDraw)
-            for(int i=0; i< listObjects.Length; i++)
+            for (int i = 0; i < listObjects.Length; i++)
             {
                 if (listObjects[i].DataReady)
                 {
@@ -169,84 +192,112 @@ public class RessourceManager : MonoBehaviour {
                     texDraw++;
                     if (texDraw >= listObjects.Length)
                         allDraw = true;
-                    //info.text = "Object"+i;
                 }
             }
     }
 
-    private void SaveTexture(int _i,int indexThread)
+    private void SaveTexture(int indexThread)
     {
-        listObjects[_i].needSave = false;
+        int tmp;
+        lock (_lockTmp)
+            tmp = iFor[0];
+
+        listObjects[tmp].needSave = false;
 
         //byte[] bytes = listTex[_i].EncodeToJPG();
-        File.WriteAllBytes(listObjects[_i].pathSave, listObjects[_i].saveData);
-        LoadTexture(_i, indexThread);
+        File.WriteAllBytes(listObjects[tmp].pathSave, listObjects[tmp].saveData);
+        LoadTexture(indexThread);
     }
 
-    private void LoadTexture(int _i,int indexThread)
+    private void LoadTexture(int indexThread)
     {
-        listObjects[_i].saveData = File.ReadAllBytes(listObjects[_i].pathSave);
-        listObjects[_i].DataReady = true;
+        int tmp;
+        lock (_lockTmp)
+        {
+            tmp = iFor[0];
+            iFor.RemoveAt(0);
+        }
+        Debug.LogError(tmp);
 
+        listObjects[tmp].saveData = File.ReadAllBytes(listObjects[tmp].pathSave);
+        listObjects[tmp].DataReady = true;
+        
         if (indexObjectsWaiting.Count > 0)
         {
-            int tmpI = indexObjectsWaiting[0];
-            indexObjectsWaiting.RemoveAt(0);
-            Debug.LogError("Keep Thread " + indexThread + " Load pour " + tmpI);
+            int tmpI;
+            lock (_lockAdd)
+            {
+                tmpI = indexObjectsWaiting[0];
+                iFor.Add(indexObjectsWaiting[0]);
+                indexObjectsWaiting.RemoveAt(0);
+            }
 
             if (listObjects[tmpI].needSave)
-            {
-                SaveTexture(tmpI, indexThread);
-            }
+                SaveTexture(indexThread);
             else
+                LoadTexture(indexThread);
+        }
+        else
+        {
+            indexFreeThread.Add(indexThread);
+        }
+    }
+
+    object _lockTmp = new object();
+    object _lockAdd = new object();
+
+    private void SaveTextureWithoutLoad(int indexThread)
+    {
+        int tmp;
+        lock (_lockTmp) {
+            tmp = iFor[0];
+            iFor.RemoveAt(0);
+        }
+
+        File.WriteAllBytes(listObjects[tmp].pathSave, listObjects[tmp].saveData);
+
+        if (indexObjectsWaitingSave.Count > 0)
+        {
+            lock (_lockAdd)
             {
-                LoadTexture(tmpI, indexThread);
+                iFor.Add(indexObjectsWaitingSave[0]);
+                indexObjectsWaitingSave.RemoveAt(0);
             }
+
+            SaveTextureWithoutLoad(indexThread);
         }
         else
         {
-            indexFreeThread.Insert(indexThread,0); //Pour pouvoir utiliser en priorité le premier thread
-            //ou indexFreeThread.Add(indexThread);
+            indexFreeThread.Add(indexThread); 
         }
     }
 
-    private void SaveTextureWithoutLoad(int _i, int indexThread)
+    private void LoadTextureWithoutSave(int indexThread)
     {
-        listObjects[_i].needSave = false;
-        File.WriteAllBytes(listObjects[_i].pathSave, listObjects[_i].saveData);
-
-        if (indexObjectsWaiting.Count > 0)
+        int tmp;
+        lock (_lockTmp)
         {
-            int tmpI = indexObjectsWaiting[0];
-            indexObjectsWaiting.RemoveAt(0);
-            Debug.LogError("Keep Thread " + indexThread + " Save pour " + tmpI);
+            Debug.Log(iFor[0]);
+            tmp = iFor[0];
+            iFor.RemoveAt(0);
+        }
 
-            SaveTexture(tmpI, indexThread);
+        listObjects[tmp].saveData = File.ReadAllBytes(listObjects[tmp].pathSave);
+        listObjects[tmp].DataReady = true;
+
+        if (indexObjectsWaitingLoad.Count > 0)
+        {
+            lock (_lockAdd)
+            {
+                iFor.Add(indexObjectsWaitingLoad[0]);
+                indexObjectsWaitingLoad.RemoveAt(0);
+            }
+
+            LoadTextureWithoutSave(indexThread);
         }
         else
         {
-            indexFreeThread.Insert(indexThread, 0); //Pour pouvoir utiliser en priorité le premier thread
-            //ou indexFreeThread.Add(indexThread);
-        }
-    }
-
-    private void LoadTextureWithoutSave(int _i, int indexThread)
-    {
-        listObjects[_i].saveData = File.ReadAllBytes(listObjects[_i].pathSave);
-        listObjects[_i].DataReady = true;
-
-        if (indexObjectsWaiting.Count > 0)
-        {
-            int tmpI = indexObjectsWaiting[0];
-            indexObjectsWaiting.RemoveAt(0);
-            Debug.LogError("Keep Thread " + indexThread + " Load pour " + tmpI);
-
-            LoadTexture(tmpI, indexThread);
-        }
-        else
-        {
-            indexFreeThread.Insert(indexThread, 0); //Pour pouvoir utiliser en priorité le premier thread
-            //ou indexFreeThread.Add(indexThread);
+            indexFreeThread.Add(indexThread);
         }
     }
 }
